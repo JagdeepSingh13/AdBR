@@ -1,2 +1,2 @@
 ## Adaptive Bitrate Streaming (HLD Architecture)
-![Project HLD Architecture](images/Screenshot 2026-05-11 174649.png)
+![Project HLD Architecture](https://github.com/JagdeepSingh13/AdBR/blob/main/images/Screenshot%202026-05-11%20174649.png?raw=true)
