@@ -1,32 +1,24 @@
-package com.adbr.contentservice.model;
+package com.adbr.contentservice.dto;
 
-import jakarta.persistence.*;
+import com.adbr.contentservice.model.Genre;
+import com.adbr.contentservice.model.VideoStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "movies")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Movie {
+public class MovieResponse {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    @Column(nullable = false)
     private String title;
 
-    @Column(length = 1000)
     private String description;
 
-    @Enumerated(EnumType.STRING)
     private Genre genre;
 
     private String director;
@@ -37,18 +29,12 @@ public class Movie {
     private String thumbnailUrl;
     private int durationminutes;
 
-//    s3 key of video file
     private String videoKey;
 
-//    HLS master playlist URL for streaming
     private String hlsUrl;
 
-    @Enumerated(EnumType.STRING)
     private VideoStatus videoStatus;
 
-    @CreationTimestamp
     private LocalDateTime createdAt;
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
 
 }
