@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -75,7 +77,7 @@ public class EncodingService {
                 int bitrate =qualities[1];
                 int ht = qualities[2];
 
-                String qualityDir = jobPath + "/encoded" + ht + "p";
+                String qualityDir = jobPath + "/encoded/" + ht + "p";
                 Files.createDirectories(Paths.get(qualityDir));
 
                 encodeToHLS(localVideoPath, qualityDir, wd, ht, bitrate);
@@ -123,15 +125,77 @@ public class EncodingService {
 //            cleanup tmp files
             cleanupTempFiles(jobPath);
         }
+    }
 
+    private void cleanupTempFiles(String jobPath) {
+    }
+
+    private void uploadEncodedFilesToS3(String s, String encodedPrefix) {
+    }
+
+//    generates the master playlist that references all qualities playlists
+    private void generateMasterPlaylist(String masterPlaylistPath) throws IOException {
+        StringBuilder master = new StringBuilder();
+        master.append("#EXTM3U\n");        // extended m3u playlist
+        master.append("EXT-X-VERSION:3\n\n");
+
+//        add each quality to master playlist
+        int[][] qualities = {{1920, 5000, 1080},{1280, 2000, 720}, {854, 1200, 480}, {640, 800, 360}};
+        for (int[] q: qualities) {
+            int wd = q[0], bitrate = q[1], ht = q[2];
+
+            master.append("#EXT-X-STREAM-INF:BANDWIDTH=")
+                    .append(bitrate*1000)
+                    .append(", RESOLUTION=").append(wd).append("x").append(ht)
+                    .append(", CODECS=\"avc1.42e01e,,p4a.40.2\"\n");
+
+            master.append(ht).append("p/playlist.m3u8\n\n");
+        }
+
+        Files.writeString(Paths.get(masterPlaylistPath), master.toString());
+    }
+
+    private void encodeToHLS(String localVideoPath, String outputDir, int wd, int ht, int bitrate) throws IOException, InterruptedException {
+        String playlistPath = outputDir + "/playlist.m3u8";
+        String segmentPattern = outputDir + "/segment_%03d.ts";
+
+//        FFmpeg command for HLS encoding
+        List<String> command = Arrays.asList(
+                ffmpegPath,
+                "-i", localVideoPath,
+                "-vf", "scale=" + wd + ":" + ht,
+                "-c:v", "libx264",
+                "-b:v", bitrate + "k",
+                "-c:a", "aac",
+                "-b:a", "128k",            // audio bitrate
+                "-hls_time", "10",         // 10s segments
+                "-hls_list_size", "0",     // keep all segments
+                "-hls_segment_filename", segmentPattern,
+                "-f", "hls",
+                playlistPath
+        );
+
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        processBuilder.redirectErrorStream(true);
+
+        Process process = processBuilder.start();
+
+        int exitCode = process.waitFor();
+        if(exitCode != 0) {
+            throw new RuntimeException("FFmpeg encoding failed with exit code: " + exitCode);
+        }
+    }
+
+    private void downloadFromS3(String s3Key, String localVideoPath) {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(s3Key)
+                .build();
+
+        s3Client.getObject(getObjectRequest, Paths.get(localVideoPath));
     }
 
 }
-
-
-
-
-
 
 
 
