@@ -7,11 +7,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
@@ -128,16 +132,60 @@ public class EncodingService {
     }
 
     private void cleanupTempFiles(String jobPath) {
+        try {
+            Path dirPath = Paths.get(jobPath);
+            if(Files.exists(dirPath)) {
+                Files.walk(dirPath)
+                        .sorted(java.util.Comparator.reverseOrder())
+                        .map(Path::toFile)
+                        .forEach(File::delete);
+
+                log.info("tmp files cleaned up for: {}", jobPath);
+            }
+        } catch (IOException e) {
+            log.warn("failed to clean up: {} - {}", jobPath, e.getMessage());
+        }
+
     }
 
-    private void uploadEncodedFilesToS3(String s, String encodedPrefix) {
+    private void uploadEncodedFilesToS3(String localDir, String s3Prefix) throws IOException {
+        File dir = new File(localDir);
+        uploadDirToS3(dir, localDir, s3Prefix);
     }
 
-//    generates the master playlist that references all qualities playlists
+    private void uploadDirToS3(File dir, String localDir, String s3Prefix) throws IOException {
+        for(File file: dir.listFiles()) {
+            if(file.isDirectory()) {
+                uploadDirToS3(file, localDir, s3Prefix);
+            } else {
+                String relativePath = file.getAbsolutePath()
+                        .substring(localDir.length()+1)
+                        .replace("\\", "/");
+
+                String s3Key = s3Prefix + relativePath;
+
+                String contentType = file.getName().endsWith(".m3u8")
+                        ? "application/x-mpegURL"
+                        : "video/MP2T";
+
+                PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(s3Key)
+                        .contentType(contentType)
+                        .build();
+
+                s3Client.putObject(putObjectRequest, RequestBody.fromFile(file));
+                log.debug("uploaded: {}", s3Key);
+            }
+        }
+
+    }
+
+    //    generates the master playlist that references all qualities playlists
     private void generateMasterPlaylist(String masterPlaylistPath) throws IOException {
         StringBuilder master = new StringBuilder();
         master.append("#EXTM3U\n");        // extended m3u playlist
-        master.append("EXT-X-VERSION:3\n\n");
+        master.append("#EXT-X-VERSION:3\n\n");
 
 //        add each quality to master playlist
         int[][] qualities = {{1920, 5000, 1080},{1280, 2000, 720}, {854, 1200, 480}, {640, 800, 360}};
@@ -146,8 +194,8 @@ public class EncodingService {
 
             master.append("#EXT-X-STREAM-INF:BANDWIDTH=")
                     .append(bitrate*1000)
-                    .append(", RESOLUTION=").append(wd).append("x").append(ht)
-                    .append(", CODECS=\"avc1.42e01e,,p4a.40.2\"\n");
+                    .append(",RESOLUTION=").append(wd).append("x").append(ht)
+                    .append(",CODECS=\"avc1.42e01e,mp4a.40.2\"\n");
 
             master.append(ht).append("p/playlist.m3u8\n\n");
         }
