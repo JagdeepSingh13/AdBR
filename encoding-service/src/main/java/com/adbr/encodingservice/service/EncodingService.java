@@ -68,8 +68,60 @@ public class EncodingService {
             downloadFromS3(event.getVideoKey(), localVideoPath);
 
             log.info("raw video downloaded to: {}", localVideoPath);
-        } catch(Exception e) {
 
+//            encode to qualities and gen. HLS
+            for (int[] qualities: VIDEO_QUALITIES) {
+                int wd = qualities[0];
+                int bitrate =qualities[1];
+                int ht = qualities[2];
+
+                String qualityDir = jobPath + "/encoded" + ht + "p";
+                Files.createDirectories(Paths.get(qualityDir));
+
+                encodeToHLS(localVideoPath, qualityDir, wd, ht, bitrate);
+                log.info("encoded: {}p successfully", ht);
+            }
+
+//            generate master playlist
+            String masterPlaylistPath = jobPath + "/encoded/master.m3u8";
+            generateMasterPlaylist(masterPlaylistPath);
+            log.info("master playlist generated");
+
+//            upload all resources files to S3
+            String encodedPrefix = "encoded/" + event.getMovieId() + "/";
+            uploadEncodedFilesToS3(jobPath + "/encoded", encodedPrefix);
+            log.info("all encoded files uploaded to S3");
+
+//            publish video.encoded event
+            String masterPlaylistKey = encodedPrefix + "master.m3u8";
+            String hlsUrl = "https://" + bucketName + ".s3.amazonaws.com/" + masterPlaylistKey;
+
+            VideoEncodedEvent encodedEvent = new VideoEncodedEvent(
+                    event.getMovieId(),
+                    hlsUrl,
+                    masterPlaylistKey,
+                    true,
+                    null
+            );
+
+            kafkaTemplate.send(VIDEO_ENCODED_TOPIC, event.getMovieId(), encodedEvent);
+            log.info("videoEncodedEvent published for: {}", event.getMovieId());
+
+        } catch(Exception e) {
+            log.error("encoding failed for: {} - {}", event.getMovieId(), e.getMessage());
+
+//            publish failure event
+            VideoEncodedEvent failureEvent = new VideoEncodedEvent(
+                    event.getMovieId(),
+                    null,
+                    null,
+                    false,
+                    e.getMessage()
+            );
+            kafkaTemplate.send(VIDEO_ENCODED_TOPIC, event.getMovieId(), failureEvent);
+        } finally {
+//            cleanup tmp files
+            cleanupTempFiles(jobPath);
         }
 
     }
