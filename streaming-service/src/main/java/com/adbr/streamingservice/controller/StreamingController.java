@@ -6,10 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/stream")
@@ -41,5 +38,17 @@ public class StreamingController {
         return ResponseEntity.ok(response);
     }
 
+//    signed m3u8 playlist content, called by HLS player for each quality
+    @GetMapping("/{movieId}/playlist")
+    public ResponseEntity<String> getSignedPlaylist(
+            @PathVariable String movieId,
+            @RequestParam String path
+    ) {
+        String signedPlaylist = streamingService.getSignedPlaylist(movieId, path);
+
+        return ResponseEntity.ok()
+                .header("Content-Type", "application/x-mpegURL")
+                .body(signedPlaylist);
+    }
 
 }
